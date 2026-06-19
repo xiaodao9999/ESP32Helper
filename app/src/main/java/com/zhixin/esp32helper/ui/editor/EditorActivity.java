@@ -181,9 +181,7 @@ public class EditorActivity extends AppCompatActivity {
 
     private boolean writeFileToDevice(String fileName, String content) {
         try {
-            String command = "wfile:" + fileName + ":" + content + "\n";
-            byte[] data = command.getBytes("UTF-8");
-            return usbCommunication.writeRawData(data);
+            return usbCommunication.writeFile(fileName, content);
         } catch (Exception e) {
             Log.e(TAG, "Error writing file", e);
             return false;
