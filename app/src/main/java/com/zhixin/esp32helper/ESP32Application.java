@@ -1,4 +1,4 @@
-package com.zhixin.esp32helper.usb;
+package com.zhixin.esp32helper;
 
 import android.app.Application;
 import android.hardware.usb.UsbDevice;
