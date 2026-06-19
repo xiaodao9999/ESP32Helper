@@ -20,7 +20,23 @@ jobs:
         distribution: 'temurin'
         
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+├── .github/workflows/android.yml  # GitHub Actions编译配置
+├── app/
+│   ├── src/main/
+│   │   ├── java/com/zhixin/esp32helper/
+│   │   │   ├── ui/
+│   │   │   │   ├── main/MainActivity.java        # 主界面
+│   │   │   │   ├── connect/ConnectActivity.java   # 设备连接界面
+│   │   │   │   └── editor/EditorActivity.java    # 代码编辑界面
+│   │   │   ├── usb/UsbCommunication.java          # USB OTG通信
+│   │   │   └── ESP32Application.java
+│   │   ├── res/
+│   │   │   ├── layout/                             # 3个界面布局
+│   │   │   └── values/                             # 字符串、颜色、主题
+│   │   └── AndroidManifest.xml
+│   └── build.gradle
+├── build.gradle
+└── settings.gradle      uses: android-actions/setup-android@v3
       with:
         api-level: 34
 

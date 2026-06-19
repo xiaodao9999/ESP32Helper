@@ -11,6 +11,7 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.zhixin.esp32helper.R;
+import com.zhixin.esp32helper.ui.connect.ConnectActivity;
 import com.zhixin.esp32helper.usb.UsbCommunication;
 
 public class MainActivity extends AppCompatActivity {

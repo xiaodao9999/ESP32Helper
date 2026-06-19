@@ -1,26 +1,25 @@
 package com.zhixin.esp32helper.usb;
 
+import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
-import android.hardware.usb.UsbRequest;
 import android.util.Log;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 public class UsbCommunication {
     private static final String TAG = "UsbCommunication";
-    private static final int TIMEOUT = 1000;
+    private static final int TIMEOUT = 3000;
 
     private UsbManager usbManager;
     private UsbDevice usbDevice;
+    private UsbDeviceConnection usbConnection;
     private UsbInterface usbInterface;
     private UsbEndpoint endpointIn;
     private UsbEndpoint endpointOut;
-    private UsbRequest request;
 
     public interface OnDataReceivedListener {
         void onDataReceived(byte[] data);
@@ -41,9 +40,10 @@ public class UsbCommunication {
 
         for (int i = 0; i < interfaceCount; i++) {
             UsbInterface intf = device.getInterface(i);
-            Log.d(TAG, "Interface " + i + " - " + intf.getInterfaceClass() + " " + intf.getInterfaceSubclass());
+            Log.d(TAG, "Interface " + i + " - class: " + intf.getInterfaceClass());
 
-            if (intf.getInterfaceClass() == 255 || intf.getInterfaceClass() == 10) {
+            if (intf.getInterfaceClass() == UsbConstants.USB_CLASS_VENDOR_SPEC || 
+                intf.getInterfaceClass() == UsbConstants.USB_CLASS_COMM) {
                 usbInterface = intf;
                 int endpointCount = intf.getEndpointCount();
                 Log.d(TAG, "Endpoint count: " + endpointCount);
@@ -67,8 +67,16 @@ public class UsbCommunication {
             return false;
         }
 
-        if (!usbManager.claimInterface(usbInterface, true)) {
+        usbConnection = usbManager.openDevice(usbDevice);
+        if (usbConnection == null) {
+            Log.e(TAG, "Cannot open device connection");
+            return false;
+        }
+
+        if (!usbConnection.claimInterface(usbInterface, true)) {
             Log.e(TAG, "Cannot claim interface");
+            usbConnection.close();
+            usbConnection = null;
             return false;
         }
 
@@ -77,12 +85,16 @@ public class UsbCommunication {
     }
 
     public void closeDevice() {
-        if (usbInterface != null && usbDevice != null) {
+        if (usbConnection != null) {
             try {
-                usbManager.releaseInterface(usbInterface);
+                if (usbInterface != null) {
+                    usbConnection.releaseInterface(usbInterface);
+                }
+                usbConnection.close();
             } catch (Exception e) {
-                Log.e(TAG, "Error releasing interface", e);
+                Log.e(TAG, "Error closing connection", e);
             }
+            usbConnection = null;
         }
         usbInterface = null;
         endpointIn = null;
@@ -91,30 +103,19 @@ public class UsbCommunication {
     }
 
     public boolean writeFile(String fileName, String content) {
-        if (endpointOut == null) {
-            Log.e(TAG, "Output endpoint is null");
+        if (endpointOut == null || usbConnection == null) {
+            Log.e(TAG, "Endpoint or connection is null");
             return false;
         }
 
         try {
-            byte[] fileNameBytes = fileName.getBytes("UTF-8");
-            byte[] contentBytes = content.getBytes("UTF-8");
+            String command = "import os\nos.remove('main.py')\n";
+            byte[] removeCmd = command.getBytes("UTF-8");
+            sendRawData(removeCmd);
 
-            byte[] command = ("wfile:" + new String(fileNameBytes) + ":" + new String(contentBytes)).getBytes("UTF-8");
-            byte[] buffer = new byte[endpointOut.getMaxPacketSize()];
-
-            int offset = 0;
-            while (offset < command.length) {
-                int length = Math.min(buffer.length, command.length - offset);
-                System.arraycopy(command, offset, buffer, 0, length);
-
-                int written = usbDevice.getConnection().bulkTransfer(endpointOut, buffer, length, TIMEOUT);
-                if (written < 0) {
-                    Log.e(TAG, "Write failed");
-                    return false;
-                }
-                offset += written;
-            }
+            String writeCommand = "f = open('main.py', 'w')\nf.write('''" + content.replace("'", "\\'").replace("\\", "\\\\") + "''')\nf.close()\n";
+            byte[] writeData = writeCommand.getBytes("UTF-8");
+            sendRawData(writeData);
 
             Log.d(TAG, "File written successfully: " + fileName);
             return true;
@@ -124,41 +125,36 @@ public class UsbCommunication {
         }
     }
 
-    public boolean writeRawData(byte[] data) {
-        if (endpointOut == null) {
-            Log.e(TAG, "Output endpoint is null");
+    private boolean sendRawData(byte[] data) {
+        if (endpointOut == null || usbConnection == null) {
             return false;
         }
 
-        try {
-            int offset = 0;
-            byte[] buffer = new byte[endpointOut.getMaxPacketSize()];
+        int offset = 0;
+        byte[] buffer = new byte[endpointOut.getMaxPacketSize()];
 
-            while (offset < data.length) {
-                int length = Math.min(buffer.length, data.length - offset);
-                System.arraycopy(data, offset, buffer, 0, length);
+        while (offset < data.length) {
+            int length = Math.min(buffer.length, data.length - offset);
+            System.arraycopy(data, offset, buffer, 0, length);
 
-                int written = usbDevice.getConnection().bulkTransfer(endpointOut, buffer, length, TIMEOUT);
-                if (written < 0) {
-                    return false;
-                }
-                offset += written;
+            int written = usbConnection.bulkTransfer(endpointOut, buffer, length, TIMEOUT);
+            if (written < 0) {
+                Log.e(TAG, "Write failed at offset " + offset);
+                return false;
             }
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Error writing raw data", e);
-            return false;
+            offset += written;
         }
+        return true;
     }
 
     public byte[] readResponse() {
-        if (endpointIn == null) {
+        if (endpointIn == null || usbConnection == null) {
             return null;
         }
 
         try {
             byte[] buffer = new byte[endpointIn.getMaxPacketSize()];
-            int read = usbDevice.getConnection().bulkTransfer(endpointIn, buffer, buffer.length, TIMEOUT);
+            int read = usbConnection.bulkTransfer(endpointIn, buffer, buffer.length, TIMEOUT);
 
             if (read > 0) {
                 return Arrays.copyOf(buffer, read);
@@ -170,6 +166,10 @@ public class UsbCommunication {
     }
 
     public boolean isConnected() {
-        return usbDevice != null && usbInterface != null;
+        return usbConnection != null && usbInterface != null;
+    }
+
+    public UsbDevice getUsbDevice() {
+        return usbDevice;
     }
 }
