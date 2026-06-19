@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">智信编程助手</string>
+    <string name="connect">连接设备</string>
+    <string name="disconnect">断开连接</string>
+    <string name="edit_code">编辑代码</string>
+    <string name="write_file">写入文件</string>
+    <string name="copy">复制</string>
+    <string name="paste">粘贴</string>
+    <string name="clear">清空</string>
+    <string name="send">发送</string>
+    <string name="device_connected">设备已连接</string>
+    <string name="device_disconnected">设备未连接</string>
+    <string name="usb_permission_required">需要USB权限</string>
+    <string name="write_success">写入成功</string>
+    <string name="write_failed">写入失败</string>
+    <string name="no_device">未检测到ESP32设备</string>
+    <string name="code_editor">代码编辑器</string>
+    <string name="file_name">文件名</string>
+    <string name="main_py">main.py</string>
+    <string name="connecting">连接中...</string>
+    <string name="settings">设置</string>
+    <string name="about">关于</string>
+    <string name="help">帮助</string>
+</resources>
