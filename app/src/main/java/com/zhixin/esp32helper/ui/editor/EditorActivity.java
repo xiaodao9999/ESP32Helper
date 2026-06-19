@@ -9,7 +9,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -146,7 +145,7 @@ public class EditorActivity extends AppCompatActivity {
     }
 
     private void writeToDevice() {
-        String content = etCode.getText().toString();
+        final String content = etCode.getText().toString();
         if (content.isEmpty()) {
             Toast.makeText(this, "代码为空", Toast.LENGTH_SHORT).show();
             return;
@@ -160,29 +159,36 @@ public class EditorActivity extends AppCompatActivity {
         tvStatus.setText("正在写入...");
         btnWrite.setEnabled(false);
 
-        final boolean[] result = new boolean[1];
-        new Thread(() -> {
-            try {
-                if (!usbComm.isConnected()) {
-                    usbComm.openDevice(usbManager, esp32Device);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean success;
+                try {
+                    if (!usbComm.isConnected()) {
+                        usbComm.openDevice(usbManager, esp32Device);
+                    }
+                    success = usbComm.writeFile("main.py", content);
+                } catch (Exception e) {
+                    Log.e(TAG, "write error", e);
+                    success = false;
                 }
-                result[0] = usbComm.writeFile("main.py", content);
-            } catch (Exception e) {
-                Log.e(TAG, "write error", e);
-            }
 
-            handler.post(() -> {
-                btnWrite.setEnabled(true);
-                if (result[0]) {
-                    tvStatus.setText("写入成功");
-                    tvStatus.setTextColor(getResources().getColor(R.color.success, null));
-                    Toast.makeText(EditorActivity.this, "写入成功", Toast.LENGTH_SHORT).show();
-                } else {
-                    tvStatus.setText("写入失败");
-                    tvStatus.setTextColor(getResources().getColor(R.color.error, null));
-                    Toast.makeText(EditorActivity.this, "写入失败", Toast.LENGTH_SHORT).show();
-                }
-            });
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        btnWrite.setEnabled(true);
+                        if (success) {
+                            tvStatus.setText("写入成功");
+                            tvStatus.setTextColor(getResources().getColor(R.color.success, null));
+                            Toast.makeText(EditorActivity.this, "写入成功", Toast.LENGTH_SHORT).show();
+                        } else {
+                            tvStatus.setText("写入失败");
+                            tvStatus.setTextColor(getResources().getColor(R.color.error, null));
+                            Toast.makeText(EditorActivity.this, "写入失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
         }).start();
     }
 }
