@@ -25,7 +25,8 @@ import java.util.HashMap;
 
 public class EditorActivity extends AppCompatActivity {
     private static final String TAG = "EditorActivity";
-    private static final int VENDOR_ID_ESPRESSIF = 0x0483;
+    private static final int VENDOR_ID_ESPRESSIF_MICROPYTHON = 0x303A;
+    private static final int VENDOR_ID_ST = 0x0483;
     private static final int VENDOR_ID_SILICON = 0x10C4;
     private static final int VENDOR_ID_FTDI = 0x0403;
 
@@ -84,7 +85,7 @@ public class EditorActivity extends AppCompatActivity {
 
         for (UsbDevice device : deviceList.values()) {
             int vendorId = device.getVendorId();
-            if (vendorId == VENDOR_ID_ESPRESSIF || vendorId == VENDOR_ID_SILICON || vendorId == VENDOR_ID_FTDI) {
+            if (vendorId == VENDOR_ID_ESPRESSIF_MICROPYTHON || vendorId == VENDOR_ID_ST || vendorId == VENDOR_ID_SILICON || vendorId == VENDOR_ID_FTDI) {
                 esp32Device = device;
                 usbCommunication.openDevice(usbManager, esp32Device);
                 tvStatus.setText("设备已连接");

@@ -20,8 +20,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvStatus;
     private UsbCommunication usbCommunication;
 
-    public static final int VENDOR_ID_ESPRESSIF = 0x0483;
-    public static final int PRODUCT_ID_STM32 = 0x5740;
+    public static final int VENDOR_ID_ESPRESSIF_MICROPYTHON = 0x303A;
+    public static final int VENDOR_ID_ST = 0x0483;
+    public static final int VENDOR_ID_SILICON = 0x10C4;
+    public static final int VENDOR_ID_FTDI = 0x0403;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,9 +58,10 @@ public class MainActivity extends AppCompatActivity {
         if (usbManager != null) {
             boolean deviceFound = false;
             for (UsbDevice device : usbManager.getDeviceList().values()) {
-                if (device.getVendorId() == VENDOR_ID_ESPRESSIF || 
-                    device.getVendorId() == 0x10C4 || 
-                    device.getVendorId() == 0x0403) {
+                if (device.getVendorId() == VENDOR_ID_ESPRESSIF_MICROPYTHON || 
+                    device.getVendorId() == VENDOR_ID_ST || 
+                    device.getVendorId() == VENDOR_ID_SILICON || 
+                    device.getVendorId() == VENDOR_ID_FTDI) {
                     deviceFound = true;
                     break;
                 }

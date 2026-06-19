@@ -25,7 +25,8 @@ import java.util.HashMap;
 
 public class ConnectActivity extends AppCompatActivity {
     private static final String TAG = "ConnectActivity";
-    private static final int VENDOR_ID_ESPRESSIF = 0x0483;
+    private static final int VENDOR_ID_ESPRESSIF_MICROPYTHON = 0x303A;
+    private static final int VENDOR_ID_ST = 0x0483;
     private static final int VENDOR_ID_SILICON = 0x10C4;
     private static final int VENDOR_ID_FTDI = 0x0403;
 
@@ -46,7 +47,20 @@ public class ConnectActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+            if (ACTION_USB_PERMISSION.equals(action)) {
+                synchronized (this) {
+                    UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        if (device != null) {
+                            appendLog("USB权限已获取");
+                            openDeviceConnection();
+                        }
+                    } else {
+                        appendLog("USB权限被拒绝");
+                        btnStartConnection.setEnabled(true);
+                    }
+                }
+            } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
                 appendLog("USB设备已连接");
                 refreshDeviceList();
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
@@ -80,6 +94,7 @@ public class ConnectActivity extends AppCompatActivity {
         btnBack.setOnClickListener(v -> finish());
 
         IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_USB_PERMISSION);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         registerReceiver(usbReceiver, filter);
@@ -114,7 +129,7 @@ public class ConnectActivity extends AppCompatActivity {
                 int productId = device.getProductId();
                 String deviceName = device.getDeviceName();
 
-                if (vendorId == VENDOR_ID_ESPRESSIF || vendorId == VENDOR_ID_SILICON || vendorId == VENDOR_ID_FTDI) {
+                if (vendorId == VENDOR_ID_ESPRESSIF_MICROPYTHON || vendorId == VENDOR_ID_ST || vendorId == VENDOR_ID_SILICON || vendorId == VENDOR_ID_FTDI) {
                     selectedDevice = device;
                     info.append("设备: ").append(deviceName).append("\n");
                     info.append("Vendor ID: ").append(String.format("0x%04X", vendorId)).append("\n");
@@ -133,12 +148,24 @@ public class ConnectActivity extends AppCompatActivity {
         updateButtons();
     }
 
+    private static final String ACTION_USB_PERMISSION = "com.zhixin.esp32helper.USB_PERMISSION";
+
     private void connectToDevice() {
         if (selectedDevice == null) {
             appendLog("没有选择设备");
             return;
         }
 
+        if (usbManager.hasPermission(selectedDevice)) {
+            openDeviceConnection();
+        } else {
+            appendLog("请求USB权限...");
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+            usbManager.requestPermission(selectedDevice, pendingIntent);
+        }
+    }
+
+    private void openDeviceConnection() {
         progressBar.setVisibility(View.VISIBLE);
         btnStartConnection.setEnabled(false);
         appendLog("正在连接...");
