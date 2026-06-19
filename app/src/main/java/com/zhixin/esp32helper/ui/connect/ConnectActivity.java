@@ -173,17 +173,17 @@ public class ConnectActivity extends AppCompatActivity {
         btnConnect.setEnabled(false);
         appendLog("正在连接设备...");
 
+        final boolean[] result = new boolean[1];
         new Thread(() -> {
-            boolean success = false;
             try {
-                success = usbComm.openDevice(usbManager, selectedDevice);
+                result[0] = usbComm.openDevice(usbManager, selectedDevice);
             } catch (Exception e) {
                 Log.e(TAG, "openDevice error", e);
             }
 
             handler.post(() -> {
                 progressBar.setVisibility(View.GONE);
-                if (success) {
+                if (result[0]) {
                     appendLog("连接成功！");
                     btnConnect.setVisibility(View.GONE);
                     btnDisconnect.setVisibility(View.VISIBLE);
