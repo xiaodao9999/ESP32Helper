@@ -42,8 +42,10 @@ public class UsbCommunication {
             UsbInterface intf = device.getInterface(i);
             Log.d(TAG, "Interface " + i + " - class: " + intf.getInterfaceClass());
 
-            if (intf.getInterfaceClass() == UsbConstants.USB_CLASS_VENDOR_SPEC || 
-                intf.getInterfaceClass() == UsbConstants.USB_CLASS_COMM) {
+            int intfClass = intf.getInterfaceClass();
+            if (intfClass == UsbConstants.USB_CLASS_VENDOR_SPEC || 
+                intfClass == UsbConstants.USB_CLASS_COMM ||
+                intfClass == 0x0A) {  // CDC_DATA class
                 usbInterface = intf;
                 int endpointCount = intf.getEndpointCount();
                 Log.d(TAG, "Endpoint count: " + endpointCount);

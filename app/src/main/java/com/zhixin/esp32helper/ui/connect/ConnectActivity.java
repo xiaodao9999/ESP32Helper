@@ -38,6 +38,8 @@ public class ConnectActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private TextView tvLog;
 
+    private static final String ACTION_USB_PERMISSION = "com.zhixin.esp32helper.USB_PERMISSION";
+
     private UsbManager usbManager;
     private UsbDevice selectedDevice;
     private UsbCommunication usbCommunication;
@@ -129,26 +131,25 @@ public class ConnectActivity extends AppCompatActivity {
                 int productId = device.getProductId();
                 String deviceName = device.getDeviceName();
 
+                info.append("设备: ").append(deviceName).append("\n");
+                info.append("Vendor ID: ").append(String.format("0x%04X", vendorId)).append("\n");
+                info.append("Product ID: ").append(String.format("0x%04X", productId)).append("\n");
+
                 if (vendorId == VENDOR_ID_ESPRESSIF_MICROPYTHON || vendorId == VENDOR_ID_ST || vendorId == VENDOR_ID_SILICON || vendorId == VENDOR_ID_FTDI) {
                     selectedDevice = device;
-                    info.append("设备: ").append(deviceName).append("\n");
-                    info.append("Vendor ID: ").append(String.format("0x%04X", vendorId)).append("\n");
-                    info.append("Product ID: ").append(String.format("0x%04X", productId)).append("\n");
-                    info.append("状态: 已找到ESP32设备");
+                    info.append("状态: 已找到ESP32设备\n\n");
                     btnStartConnection.setEnabled(true);
+                } else {
+                    info.append("状态: 未知设备\n\n");
                 }
             }
-            if (info.length() == 0) {
-                tvDeviceInfo.setText("未检测到ESP32设备");
+            if (selectedDevice == null) {
                 btnStartConnection.setEnabled(false);
-            } else {
-                tvDeviceInfo.setText(info.toString());
             }
+            tvDeviceInfo.setText(info.toString());
         }
         updateButtons();
     }
-
-    private static final String ACTION_USB_PERMISSION = "com.zhixin.esp32helper.USB_PERMISSION";
 
     private void connectToDevice() {
         if (selectedDevice == null) {
@@ -160,7 +161,7 @@ public class ConnectActivity extends AppCompatActivity {
             openDeviceConnection();
         } else {
             appendLog("请求USB权限...");
-            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
             usbManager.requestPermission(selectedDevice, pendingIntent);
         }
     }
