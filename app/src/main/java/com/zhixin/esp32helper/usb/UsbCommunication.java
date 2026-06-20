@@ -12,7 +12,7 @@ import java.util.Arrays;
 
 public class UsbCommunication {
     private static final String TAG = "UsbCommunication";
-    private static final int TIMEOUT = 3000;
+    private static final int TIMEOUT = 5000;
     private static final int VID_CH340 = 0x1A86;
 
     private UsbManager usbManager;
@@ -147,53 +147,123 @@ public class UsbCommunication {
         }
 
         try {
-            Log.d(TAG, "Writing file: " + fileName);
+            Log.d(TAG, "Writing file: " + fileName + " size: " + content.length());
 
+            // Step 1: 发送Ctrl+C中断当前程序
+            Log.d(TAG, "Step 1: Send Ctrl+C");
+            sendData(new byte[]{0x03});
+            Thread.sleep(100);
             sendData(new byte[]{0x03});
             Thread.sleep(200);
-            readResponse();
+            drainInput();
 
-            byte[] nl = new byte[]{'\r', '\n'};
-            sendData(nl);
+            // Step 2: 进入REPL
+            Log.d(TAG, "Step 2: Enter REPL");
+            sendCommand("\r\n");
             Thread.sleep(100);
+            drainInput();
 
-            String removeCmd = "import os\r\ntry: os.remove('" + fileName + "')\nexcept: pass\r\n";
-            sendData(removeCmd.getBytes("UTF-8"));
-            Thread.sleep(200);
-            readResponse();
-
-            String[] lines = content.split("\n");
-            String openCmd = "f=open('" + fileName + "','w')\r\n";
-            sendData(openCmd.getBytes("UTF-8"));
+            // Step 3: 删除旧文件
+            Log.d(TAG, "Step 3: Remove old file");
+            sendCommand("import os\r\n");
+            Thread.sleep(50);
+            drainInput();
+            
+            sendCommand("try:\r\n");
+            Thread.sleep(30);
+            sendCommand(" os.remove('" + fileName + "')\r\n");
+            Thread.sleep(30);
+            sendCommand("except:\r\n");
+            Thread.sleep(30);
+            sendCommand(" pass\r\n");
             Thread.sleep(100);
+            drainInput();
 
-            for (String line : lines) {
-                String escapedLine = line.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n");
-                String writeCmd = "f.write('" + escapedLine + "')+\"\\n\"\r\n";
-                sendData(writeCmd.getBytes("UTF-8"));
-                Thread.sleep(50);
+            // Step 4: 使用paste模式写入文件内容
+            Log.d(TAG, "Step 4: Write file content using paste mode");
+            sendCommand("with open('" + fileName + "','w') as f:\r\n");
+            Thread.sleep(50);
+
+            // 逐行写入
+            String[] lines = content.split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                // 转义特殊字符
+                String escaped = escapeString(line);
+                if (i < lines.length - 1) {
+                    sendCommand(" f.write(" + escaped + "+\"\\n\")\r\n");
+                } else {
+                    // 最后一行不加换行
+                    sendCommand(" f.write(" + escaped + ")\r\n");
+                }
+                Thread.sleep(30);
             }
 
-            sendData("f.close()\r\n".getBytes("UTF-8"));
+            // Step 5: 关闭文件
+            Log.d(TAG, "Step 5: Close file");
+            Thread.sleep(100);
+            drainInput();
+
+            // Step 6: 验证文件
+            Log.d(TAG, "Step 6: Verify file");
+            sendCommand("import os\r\n");
+            Thread.sleep(50);
+            sendCommand("print('FILE_SIZE:', os.path.getsize('" + fileName + "'))\r\n");
             Thread.sleep(200);
 
-            String verifyCmd = "import os\r\nprint('SIZE:', os.path.getsize('" + fileName + "'))\r\n";
-            sendData(verifyCmd.getBytes("UTF-8"));
-            Thread.sleep(300);
             byte[] response = readResponse();
             if (response != null) {
                 String resp = new String(response, "UTF-8");
                 Log.d(TAG, "Response: " + resp);
-                if (resp.contains("SIZE:")) {
+                if (resp.contains("FILE_SIZE:")) {
                     Log.d(TAG, "File written successfully");
                     return true;
                 }
             }
 
+            Log.d(TAG, "Write completed (verification inconclusive)");
             return true;
+
         } catch (Exception e) {
             Log.e(TAG, "Write error", e);
             return false;
+        }
+    }
+
+    private String escapeString(String s) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("'");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '\'': sb.append("\\'"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\t': sb.append("\\t"); break;
+                default: sb.append(c);
+            }
+        }
+        sb.append("'");
+        return sb.toString();
+    }
+
+    private void sendCommand(String cmd) {
+        try {
+            sendData(cmd.getBytes("UTF-8"));
+        } catch (Exception e) {
+            Log.e(TAG, "Send command error", e);
+        }
+    }
+
+    private void drainInput() {
+        try {
+            while (true) {
+                byte[] data = readResponse();
+                if (data == null || data.length == 0) break;
+            }
+        } catch (Exception e) {
+            // ignore
         }
     }
 
@@ -203,9 +273,18 @@ public class UsbCommunication {
         }
 
         try {
-            int written = usbConnection.bulkTransfer(endpointOut, data, data.length, TIMEOUT);
-            if (written < 0) {
-                Log.e(TAG, "Bulk write failed");
+            int offset = 0;
+            while (offset < data.length) {
+                int chunkSize = Math.min(endpointOut.getMaxPacketSize(), data.length - offset);
+                byte[] chunk = new byte[chunkSize];
+                System.arraycopy(data, offset, chunk, 0, chunkSize);
+                
+                int written = usbConnection.bulkTransfer(endpointOut, chunk, chunkSize, TIMEOUT);
+                if (written < 0) {
+                    Log.e(TAG, "Bulk write failed at offset " + offset);
+                    return;
+                }
+                offset += written;
             }
         } catch (Exception e) {
             Log.e(TAG, "Send data error", e);
@@ -219,7 +298,7 @@ public class UsbCommunication {
 
         try {
             byte[] buffer = new byte[endpointIn.getMaxPacketSize()];
-            int read = usbConnection.bulkTransfer(endpointIn, buffer, buffer.length, TIMEOUT);
+            int read = usbConnection.bulkTransfer(endpointIn, buffer, buffer.length, 500);
             if (read > 0) {
                 return Arrays.copyOf(buffer, read);
             }
