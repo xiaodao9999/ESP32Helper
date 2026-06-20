@@ -8,7 +8,6 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.util.Log;
 
-import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
 public class UsbCommunication {
@@ -38,14 +37,10 @@ public class UsbCommunication {
         int interfaceCount = device.getInterfaceCount();
         Log.d(TAG, "Interface count: " + interfaceCount);
 
-        // 首先尝试查找CH340的CDC ACM接口
         if (device.getVendorId() == VID_CH340) {
-            // CH340芯片的特殊处理
             for (int i = 0; i < interfaceCount; i++) {
                 UsbInterface intf = device.getInterface(i);
                 Log.d(TAG, "CH340 Interface " + i + " class=" + intf.getInterfaceClass());
-
-                // CH340通常使用CDC ACM (class 10) 或者 vendor specific
                 int intfClass = intf.getInterfaceClass();
                 if (intfClass == 0x0A || intfClass == UsbConstants.USB_CLASS_VENDOR_SPEC) {
                     if (tryInterface(intf)) {
@@ -55,7 +50,6 @@ public class UsbCommunication {
             }
         }
 
-        // 通用设备处理
         for (int i = 0; i < interfaceCount; i++) {
             UsbInterface intf = device.getInterface(i);
             int intfClass = intf.getInterfaceClass();
@@ -71,7 +65,6 @@ public class UsbCommunication {
             }
         }
 
-        // 尝试第一个接口（有些设备只有一个接口）
         if (interfaceCount > 0) {
             UsbInterface intf = device.getInterface(0);
             if (tryInterface(intf)) {
@@ -156,30 +149,25 @@ public class UsbCommunication {
         try {
             Log.d(TAG, "Writing file: " + fileName);
 
-            // 发送Ctrl+C中断当前程序
             sendData(new byte[]{0x03});
             Thread.sleep(200);
             readResponse();
 
-            // 发送换行确保在命令行
-            sendData("\r\n".getBytes("UTF-8"));
+            byte[] nl = new byte[]{'\r', '\n'};
+            sendData(nl);
             Thread.sleep(100);
 
-            // 使用ampy或者exec方式写入
-            // 先尝试os.remove
             String removeCmd = "import os\r\ntry: os.remove('" + fileName + "')\nexcept: pass\r\n";
             sendData(removeCmd.getBytes("UTF-8"));
             Thread.sleep(200);
             readResponse();
 
-            // 逐行写入
             String[] lines = content.split("\n");
             String openCmd = "f=open('" + fileName + "','w')\r\n";
             sendData(openCmd.getBytes("UTF-8"));
             Thread.sleep(100);
 
             for (String line : lines) {
-                // 使用repr转义特殊字符
                 String escapedLine = line.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n");
                 String writeCmd = "f.write('" + escapedLine + "')+\"\\n\"\r\n";
                 sendData(writeCmd.getBytes("UTF-8"));
@@ -189,7 +177,6 @@ public class UsbCommunication {
             sendData("f.close()\r\n".getBytes("UTF-8"));
             Thread.sleep(200);
 
-            // 验证文件是否写入成功
             String verifyCmd = "import os\r\nprint('SIZE:', os.path.getsize('" + fileName + "'))\r\n";
             sendData(verifyCmd.getBytes("UTF-8"));
             Thread.sleep(300);
