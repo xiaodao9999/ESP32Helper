@@ -174,13 +174,15 @@ public class UsbCommunication {
 
             // 逐行写入
             String[] lines = content.split("\n");
-            sendData("f=open('" + fileName + "','w')\r\n".getBytes("UTF-8"));
+            String openCmd = "f=open('" + fileName + "','w')\r\n";
+            sendData(openCmd.getBytes("UTF-8"));
             Thread.sleep(100);
 
             for (String line : lines) {
                 // 使用repr转义特殊字符
                 String escapedLine = line.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n");
-                sendData(("f.write('" + escapedLine + "')+\"\\n\"\r\n").getBytes("UTF-8"));
+                String writeCmd = "f.write('" + escapedLine + "')+\"\\n\"\r\n";
+                sendData(writeCmd.getBytes("UTF-8"));
                 Thread.sleep(50);
             }
 
@@ -188,7 +190,8 @@ public class UsbCommunication {
             Thread.sleep(200);
 
             // 验证文件是否写入成功
-            sendData("import os\r\nprint('SIZE:', os.path.getsize('" + fileName + "'))\r\n".getBytes("UTF-8"));
+            String verifyCmd = "import os\r\nprint('SIZE:', os.path.getsize('" + fileName + "'))\r\n";
+            sendData(verifyCmd.getBytes("UTF-8"));
             Thread.sleep(300);
             byte[] response = readResponse();
             if (response != null) {
