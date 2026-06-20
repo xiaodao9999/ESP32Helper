@@ -47,20 +47,20 @@ public class ConnectActivity extends AppCompatActivity {
     private UsbCommunication usbComm;
     private Handler handler;
 
-    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (ACTION_USB_PERMISSION.equals(action)) {
-                UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                    if (device != null) {
-                        appendLog("权限已获取");
-                        openDevice();
+            if (ACTION_USB_PERMISSION.equals(intent.getAction())) {
+                synchronized (this) {
+                    UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        appendLog("权限已授权");
+                        if (device != null) {
+                            openDevice(device);
+                        }
+                    } else {
+                        appendLog("权限被拒绝");
                     }
-                } else {
-                    appendLog("权限被拒绝");
-                    btnConnect.setEnabled(true);
                 }
             }
         }
@@ -84,20 +84,41 @@ public class ConnectActivity extends AppCompatActivity {
         handler = new Handler(Looper.getMainLooper());
 
         IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-        registerReceiver(usbReceiver, filter);
+        registerReceiver(permissionReceiver, filter);
 
         btnRefresh.setOnClickListener(v -> scanDevices());
-        btnConnect.setOnClickListener(v -> requestPermission());
+        btnConnect.setOnClickListener(v -> connectToDevice());
         btnDisconnect.setOnClickListener(v -> disconnect());
         btnBack.setOnClickListener(v -> finish());
 
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+            UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+            if (device != null && isSupportedDevice(device.getVendorId())) {
+                appendLog("检测到USB设备插入");
+                selectedDevice = device;
+                tvDeviceInfo.setText("设备: " + device.getDeviceName() + 
+                    "\nVID: " + String.format("0x%04X", device.getVendorId()) +
+                    "\nPID: " + String.format("0x%04X", device.getProductId()));
+                btnConnect.setEnabled(true);
+            }
+        }
         scanDevices();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(usbReceiver);
+        unregisterReceiver(permissionReceiver);
         usbComm.closeDevice();
     }
 
@@ -110,6 +131,7 @@ public class ConnectActivity extends AppCompatActivity {
 
             if (devices.isEmpty()) {
                 sb.append("未检测到USB设备");
+                appendLog("未检测到USB设备");
             } else {
                 sb.append("发现 ").append(devices.size()).append(" 个设备:\n\n");
                 for (UsbDevice dev : devices.values()) {
@@ -120,22 +142,16 @@ public class ConnectActivity extends AppCompatActivity {
                     sb.append("PID: ").append(String.format("0x%04X", pid)).append("\n");
 
                     if (isSupportedDevice(vid)) {
-                        sb.append("✓ 支持的设备\n\n");
+                        sb.append("状态: 支持的设备\n\n");
                         selectedDevice = dev;
                     } else {
-                        sb.append("✗ 未知设备\n\n");
+                        sb.append("状态: 未知设备\n\n");
                     }
                 }
             }
 
             tvDeviceInfo.setText(sb.toString());
             btnConnect.setEnabled(selectedDevice != null);
-
-            if (selectedDevice != null) {
-                appendLog("找到支持的设备");
-            } else {
-                appendLog("未找到支持的设备");
-            }
         } catch (Exception e) {
             Log.e(TAG, "scanDevices error", e);
             tvDeviceInfo.setText("扫描失败: " + e.getMessage());
@@ -147,54 +163,49 @@ public class ConnectActivity extends AppCompatActivity {
                vid == VID_FTDI || vid == VID_CH340;
     }
 
-    private void requestPermission() {
+    private void connectToDevice() {
         if (selectedDevice == null) {
             Toast.makeText(this, "请先扫描选择设备", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        try {
-            if (usbManager.hasPermission(selectedDevice)) {
-                openDevice();
-            } else {
-                appendLog("请求USB权限...");
-                PendingIntent pi = PendingIntent.getBroadcast(this, 0, 
-                    new Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
-                usbManager.requestPermission(selectedDevice, pi);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "requestPermission error", e);
-            Toast.makeText(this, "请求权限失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        if (usbManager.hasPermission(selectedDevice)) {
+            appendLog("已有权限，直接连接");
+            openDevice(selectedDevice);
+        } else {
+            appendLog("请求USB权限...");
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, 
+                new Intent(ACTION_USB_PERMISSION), 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            usbManager.requestPermission(selectedDevice, pendingIntent);
         }
     }
 
-    private void openDevice() {
+    private void openDevice(UsbDevice device) {
         progressBar.setVisibility(View.VISIBLE);
         btnConnect.setEnabled(false);
         appendLog("正在连接设备...");
 
-        final boolean[] result = new boolean[1];
-        new Thread(() -> {
-            try {
-                result[0] = usbComm.openDevice(usbManager, selectedDevice);
-            } catch (Exception e) {
-                Log.e(TAG, "openDevice error", e);
+        new Thread() {
+            public void run() {
+                final boolean success = usbComm.openDevice(usbManager, device);
+                handler.post(new Runnable() {
+                    public void run() {
+                        progressBar.setVisibility(View.GONE);
+                        if (success) {
+                            appendLog("连接成功！");
+                            btnConnect.setVisibility(View.GONE);
+                            btnDisconnect.setVisibility(View.VISIBLE);
+                            Toast.makeText(ConnectActivity.this, "设备连接成功", Toast.LENGTH_SHORT).show();
+                        } else {
+                            appendLog("连接失败");
+                            btnConnect.setEnabled(true);
+                            Toast.makeText(ConnectActivity.this, "连接失败", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
             }
-
-            handler.post(() -> {
-                progressBar.setVisibility(View.GONE);
-                if (result[0]) {
-                    appendLog("连接成功！");
-                    btnConnect.setVisibility(View.GONE);
-                    btnDisconnect.setVisibility(View.VISIBLE);
-                    Toast.makeText(ConnectActivity.this, "设备连接成功", Toast.LENGTH_SHORT).show();
-                } else {
-                    appendLog("连接失败");
-                    btnConnect.setEnabled(true);
-                    Toast.makeText(ConnectActivity.this, "连接失败，请重试", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }).start();
+        }.start();
     }
 
     private void disconnect() {
